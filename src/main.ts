@@ -205,8 +205,9 @@ function render() {
     const cmds = done.filter(s => s.tool === "Run").length;
     const failed = S.steps.filter(s => s.status === "failed").length;
     $("#fin-time").textContent = `Done in ${fmt((S.finishedAt || Date.now()) - S.started)}`;
+    const steps = S.steps.filter(s => s.tool !== "Prompt").length;
     const stats: [number, string][] = [
-      [S.steps.filter(s => s.tool !== "Prompt").length, "steps"],
+      [steps, steps === 1 ? "step" : "steps"],
       [files, files === 1 ? "file changed" : "files changed"],
       [cmds, cmds === 1 ? "command" : "commands"],
     ];
