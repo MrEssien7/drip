@@ -49,8 +49,8 @@ fn hooks_preview(install: bool) -> Result<hooks::Preview, String> {
 }
 
 #[tauri::command]
-fn hooks_apply(app: AppHandle, install: bool, fingerprint: String) -> Result<Option<String>, String> {
-    hooks::write(&app, install, &fingerprint)
+fn hooks_apply(app: AppHandle, install: bool, fingerprint: String, stamp: String) -> Result<Option<String>, String> {
+    hooks::write(&app, install, &fingerprint, &stamp)
 }
 
 pub fn open_installer(app: &AppHandle, install: bool) {
@@ -64,20 +64,40 @@ pub fn open_installer(app: &AppHandle, install: bool) {
     let url = WebviewUrl::App(format!("installer.html?mode={mode}").into());
     let built = WebviewWindowBuilder::new(app, INSTALLER_LABEL, url)
         .title(if install { "Install Claude Code hooks" } else { "Uninstall Claude Code hooks" })
-        .inner_size(720.0, 640.0)
+        .inner_size(760.0, 720.0)
         .min_inner_size(520.0, 420.0)
         .center()
+        .focused(true)
         .build();
-    if let Err(err) = built {
-        eprintln!("[drip] cannot open the installer window: {err}");
+    match built {
+        Ok(win) => {
+            let _ = win.set_focus();
+        }
+        Err(err) => eprintln!("[drip] cannot open the installer window: {err}"),
     }
+}
+
+/// `--install-hooks` / `--uninstall-hooks` open the same preview as the tray
+/// menu. Returns true when one was handled.
+fn handle_args(app: &AppHandle, args: &[String]) -> bool {
+    if args.iter().any(|a| a == "--install-hooks") {
+        open_installer(app, true);
+    } else if args.iter().any(|a| a == "--uninstall-hooks") {
+        open_installer(app, false);
+    } else {
+        return false;
+    }
+    true
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = app.emit_to(WINDOW_LABEL, "show", ());
+        // A second launch hands its arguments to the running Drip and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !handle_args(app, &args) {
+                let _ = app.emit_to(WINDOW_LABEL, "show", ());
+            }
         }))
         .manage(pipe::Pending::default())
         .invoke_handler(tauri::generate_handler![decide, set_island_size, hooks_preview, hooks_apply])
@@ -94,6 +114,7 @@ pub fn run() {
                     eprintln!("[drip] {err}");
                 }
             }
+            handle_args(&handle, &std::env::args().collect::<Vec<_>>());
             Ok(())
         })
         .run(tauri::generate_context!())

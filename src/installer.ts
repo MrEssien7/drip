@@ -8,7 +8,7 @@ import "./installer.css";
 
 interface Preview {
   install: boolean; settingsPath: string; hookPath: string; backupPath: string | null;
-  diff: string; changed: boolean; fingerprint: string;
+  diff: string; changed: boolean; reformatted: boolean; fingerprint: string; stamp: string;
 }
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -34,7 +34,10 @@ async function load() {
   done = false;
   plan = null;
   apply.disabled = true;
-  $("title").textContent = install ? "Install Claude Code hooks" : "Uninstall Claude Code hooks";
+  const heading = install ? "Install Claude Code hooks" : "Uninstall Claude Code hooks";
+  $("title").textContent = heading;
+  document.title = heading;
+  getCurrentWindow().setTitle(heading).catch(() => {});
   $("lede").textContent = install
     ? "Drip adds one hook per event to your Claude Code settings. Your own hooks and settings stay as they are."
     : "Drip removes only the hooks that run drip-hook.exe. Your own hooks and settings stay as they are.";
@@ -52,6 +55,7 @@ async function load() {
   $("hook-path").textContent = plan.hookPath;
   $("backup-path").textContent = plan.backupPath ?? "None needed: the file doesn't exist yet, so Drip will create it.";
   showDiff(plan.diff);
+  $("reformat").hidden = !(plan.changed && plan.reformatted);
   if (!plan.changed) {
     message(install ? "The hooks are already installed. Nothing to change." : "No Drip hooks found. Nothing to change.");
     return;
@@ -64,7 +68,7 @@ apply.addEventListener("click", async () => {
   if (!plan) return;
   apply.disabled = true;
   try {
-    const backup = await invoke<string | null>("hooks_apply", { install, fingerprint: plan.fingerprint });
+    const backup = await invoke<string | null>("hooks_apply", { install, fingerprint: plan.fingerprint, stamp: plan.stamp });
     done = true;
     message(`${install ? "Installed" : "Uninstalled"}.${backup ? ` Backup saved to ${backup}` : ""}`, "ok");
     apply.textContent = "Close";

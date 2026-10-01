@@ -43,11 +43,22 @@ pub struct Preview {
     pub after: String,
     pub diff: String,
     pub changed: bool,
+    /// True when writing also re-indents lines the user wrote by hand, so a
+    /// line can show as removed and re-added without anything being lost.
+    pub reformatted: bool,
     /// Identifies the bytes the preview was computed from.
     pub fingerprint: String,
+    /// Timestamp in the backup name; `write` reuses it so the backup is the
+    /// file the preview named.
+    pub stamp: String,
 }
 
+/// `%USERPROFILE%\.claude\settings.json`, or `settings.json` in
+/// `CLAUDE_CONFIG_DIR` when that is set, as Claude Code itself does.
 pub fn settings_path() -> PathBuf {
+    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir).join("settings.json");
+    }
     let home = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_else(|| ".".into());
     home.join(".claude").join("settings.json")
 }
@@ -199,8 +210,26 @@ fn stamp() -> String {
     format!("{:04}{:02}{:02}-{:02}{:02}{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond)
 }
 
-fn backup_path_for(path: &Path) -> PathBuf {
-    path.with_file_name(format!("settings.json.drip-backup-{}", stamp()))
+fn backup_path_for(path: &Path, stamp: &str) -> PathBuf {
+    path.with_file_name(format!("settings.json.drip-backup-{stamp}"))
+}
+
+/// `YYYYMMDD-HHMMSS`, as `stamp()` makes it. Anything else is refused, so
+/// the front end can't steer the backup name.
+fn valid_stamp(s: &str) -> bool {
+    s.len() == 15 && s.bytes().enumerate().all(|(i, b)| if i == 8 { b == b'-' } else { b.is_ascii_digit() })
+}
+
+/// A backup path that doesn't exist yet: never overwrite an earlier backup.
+fn fresh_backup_path(path: &Path, stamp: &str) -> PathBuf {
+    let first = backup_path_for(path, stamp);
+    if !first.exists() {
+        return first;
+    }
+    (2..)
+        .map(|n| path.with_file_name(format!("settings.json.drip-backup-{stamp}-{n}")))
+        .find(|p| !p.exists())
+        .expect("some backup name is free")
 }
 
 // ── Preview and write ────────────────────────────────────────────────────────
@@ -215,21 +244,31 @@ pub fn preview_at(install: bool, path: &Path, exe: &Path) -> Result<Preview, Str
         None => String::new(),
     };
     let after = pretty(&next);
+    let norm = |t: &str| t.replace("
+", "
+").trim_end().to_string();
+    let reformatted = bytes.is_some() && norm(&before) != norm(&pretty(&current));
+    let stamp = stamp();
     Ok(Preview {
         install,
         settings_path: path.display().to_string(),
         hook_path: exe.display().to_string(),
-        backup_path: bytes.as_ref().map(|_| backup_path_for(path).display().to_string()),
+        backup_path: bytes.as_ref().map(|_| backup_path_for(path, &stamp).display().to_string()),
         changed: current != next,
         diff: unified_diff(&before, &after),
         before,
         after,
+        reformatted,
         fingerprint: fingerprint(bytes.as_deref()),
+        stamp,
     })
 }
 
 /// Writes after a backup. Returns the backup path, if one was needed.
-pub fn write_at(install: bool, path: &Path, exe: &Path, expected: &str) -> Result<Option<String>, String> {
+pub fn write_at(install: bool, path: &Path, exe: &Path, expected: &str, stamp: &str) -> Result<Option<String>, String> {
+    if !valid_stamp(stamp) {
+        return Err("Invalid backup timestamp. Nothing was written.".into());
+    }
     let (current, bytes) = read(path)?;
     if fingerprint(bytes.as_deref()) != expected {
         return Err(format!("{} changed since the preview. Nothing was written; review the new preview.", path.display()));
@@ -241,7 +280,7 @@ pub fn write_at(install: bool, path: &Path, exe: &Path, expected: &str) -> Resul
     }
     let backup = match bytes {
         Some(_) => {
-            let b = backup_path_for(path);
+            let b = fresh_backup_path(path, stamp);
             std::fs::copy(path, &b).map_err(|e| format!("Backup failed, nothing was written: {e}"))?;
             Some(b.display().to_string())
         }
@@ -262,11 +301,11 @@ pub fn preview(install: bool) -> Result<Preview, String> {
     preview_at(install, &settings_path(), &hook_exe_path())
 }
 
-pub fn write(app: &AppHandle, install: bool, fingerprint: &str) -> Result<Option<String>, String> {
+pub fn write(app: &AppHandle, install: bool, fingerprint: &str, stamp: &str) -> Result<Option<String>, String> {
     if install {
         copy_hook_exe(app)?;
     }
-    write_at(install, &settings_path(), &hook_exe_path(), fingerprint)
+    write_at(install, &settings_path(), &hook_exe_path(), fingerprint, stamp)
 }
 
 pub fn installed() -> bool {
@@ -428,7 +467,10 @@ mod tests {
 
         let plan = preview_at(true, &path, &exe()).unwrap();
         assert!(plan.changed && plan.diff.contains("+ ") && plan.backup_path.is_some());
-        let backup = write_at(true, &path, &exe(), &plan.fingerprint).unwrap().unwrap();
+        assert!(plan.reformatted, "a compact file gets re-indented");
+        let backup = write_at(true, &path, &exe(), &plan.fingerprint, &plan.stamp).unwrap().unwrap();
+        // The backup is exactly the file the preview named.
+        assert_eq!(Some(backup.clone()), plan.backup_path);
         assert_eq!(std::fs::read(&backup).unwrap(), original);
         let after: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert!(is_installed(&after));
@@ -437,16 +479,31 @@ mod tests {
         // Changed since the preview: refused, file untouched.
         let stale = preview_at(false, &path, &exe()).unwrap();
         std::fs::write(&path, br#"{"theme":"light"}"#).unwrap();
-        assert!(write_at(false, &path, &exe(), &stale.fingerprint).is_err());
+        assert!(write_at(false, &path, &exe(), &stale.fingerprint, &stale.stamp).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), br#"{"theme":"light"}"#);
 
         // No file yet: nothing to back up, file is created.
         let fresh = dir.join("sub").join("settings.json");
         let plan = preview_at(true, &fresh, &exe()).unwrap();
         assert!(plan.backup_path.is_none());
-        assert_eq!(write_at(true, &fresh, &exe(), &plan.fingerprint).unwrap(), None);
+        assert_eq!(write_at(true, &fresh, &exe(), &plan.fingerprint, &plan.stamp).unwrap(), None);
         assert!(fresh.exists());
 
+        // A second write with the same stamp keeps the first backup.
+        let again = preview_at(false, &path, &exe()).unwrap();
+        let second = write_at(false, &path, &exe(), &again.fingerprint, &backup[backup.len() - 15..]).unwrap().unwrap();
+        assert_ne!(second, backup);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+
+        // A file already in the standard layout isn't flagged as reformatted.
+        let tidy = dir.join("tidy.json");
+        std::fs::write(&tidy, "{
+  \"theme\": \"dark\"
+}
+").unwrap();
+        assert!(!preview_at(true, &tidy, &exe()).unwrap().reformatted);
+
+        assert!(write_at(true, &path, &exe(), "x", "../../evil").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

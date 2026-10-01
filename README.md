@@ -36,6 +36,11 @@ since it doesn't take keyboard focus on its own).
 
 **Uninstall hooks** removes only the hook entries that run `drip-hook.exe`.
 
+The same previews open from the command line with `Drip.exe --install-hooks`
+or `Drip.exe --uninstall-hooks` (handed to Drip if it is already running).
+If you set `CLAUDE_CONFIG_DIR`, Drip edits `settings.json` there instead of
+`%USERPROFILE%\.claude`, as Claude Code does.
+
 ## How it works
 
 ```
