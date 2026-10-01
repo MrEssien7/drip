@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drip hooks</title>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1 id="title">Install Claude Code hooks</h1>
+    <p id="lede">Drip adds one hook per event to your Claude Code settings. Nothing else in the file changes.</p>
+  </header>
+
+  <dl class="facts">
+    <dt>Settings file</dt><dd class="mono" id="settings-path">…</dd>
+    <dt id="hook-label">Relay</dt><dd class="mono" id="hook-path">…</dd>
+    <dt>Backup</dt><dd class="mono" id="backup-path">…</dd>
+  </dl>
+
+  <section class="diff-wrap" aria-labelledby="diff-h">
+    <div class="diff-head">
+      <h2 id="diff-h">Exact change</h2>
+      <span class="legend"><span class="add">+ added</span> <span class="del">− removed</span></span>
+    </div>
+    <pre class="diff mono" id="diff" tabindex="0">Loading…</pre>
+  </section>
+
+  <p class="msg" id="msg" role="status"></p>
+
+  <div class="buttons">
+    <button type="button" class="btn" id="cancel">Cancel</button>
+    <button type="button" class="btn primary" id="apply" disabled>Install hooks</button>
+  </div>
+</main>
+<script type="module" src="/src/installer.ts"></script>
+</body>
+</html>

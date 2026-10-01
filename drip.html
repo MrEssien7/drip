@@ -1,0 +1,667 @@
+<title>Drip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&display=swap">
+<style>
+/* Layout: one centered column. A mock Windows desktop is the stage; the island hangs from its top edge. Simulator and hook map sit below. */
+:root{
+  --bg:#EDF1F4; --surface:#F8FAFB; --fg:#16202A; --muted:#566473; --line:#D2DAE1;
+  --accent:#0A7E9C; --accent-fg:#FFFFFF;
+  --wall-a:#C5D4DF; --wall-b:#E3EAF0; --win:#FFFFFFB8; --win-line:#BCC8D2; --taskbar:#F4F7F9D9;
+  --isl:#0A0E12; --isl-fg:#EAF1F6; --isl-muted:#8696A5; --isl-line:#1E2A34; --isl-raise:#151D25;
+  --drip:#4CC2DB; --warn:#F2B13A; --ok:#5AD08A; --bad:#F27474; --eye:#0A1116; --eye-white:#F5FAFC;
+  --f-display:"Recursive", ui-rounded, system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"Recursive", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --spring:cubic-bezier(.34,1.35,.5,1);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0E1317; --surface:#141B21; --fg:#E4EBF0; --muted:#8C9AA7; --line:#26323C;
+  --accent:#4CC2DB; --accent-fg:#06222A;
+  --wall-a:#18232C; --wall-b:#0F171D; --win:#1A242DB8; --win-line:#2B3843; --taskbar:#0B1115D9;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0E1317; --surface:#141B21; --fg:#E4EBF0; --muted:#8C9AA7; --line:#26323C;
+  --accent:#4CC2DB; --accent-fg:#06222A;
+  --wall-a:#18232C; --wall-b:#0F171D; --win:#1A242DB8; --win-line:#2B3843; --taskbar:#0B1115D9;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:920px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:grid;gap:32px}
+.disp{font-family:var(--f-display);font-variation-settings:"CASL" 1,"MONO" 0}
+.mono{font-family:var(--f-mono);font-variation-settings:"MONO" 1,"CASL" 0}
+
+header{display:grid;gap:8px}
+h1{margin:0;font-family:var(--f-display);font-variation-settings:"CASL" 1;font-weight:850;font-size:clamp(2.4rem,7vw,3.6rem);line-height:1;letter-spacing:-.02em;text-wrap:balance}
+h1 span{color:var(--accent)}
+header p{margin:0;max-width:62ch;color:var(--muted)}
+h2{margin:0;font-family:var(--f-display);font-variation-settings:"CASL" .6;font-weight:700;font-size:1.15rem;text-wrap:balance}
+.label{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* ---------- Stage ---------- */
+.screen{position:relative;width:100%;aspect-ratio:16/10;min-height:400px;max-width:100%;border-radius:14px;overflow:hidden;
+  background:radial-gradient(120% 90% at 20% 110%,var(--wall-a),transparent 60%),radial-gradient(90% 80% at 90% -10%,var(--wall-a),transparent 55%),var(--wall-b);
+  border:1px solid var(--line);isolation:isolate}
+.hotzone{position:absolute;inset:0 0 auto 0;height:20px;z-index:2;cursor:pointer}
+.mockwin{position:absolute;left:6%;right:22%;bottom:52px;top:30%;border-radius:10px;background:var(--win);border:1px solid var(--win-line);
+  display:grid;grid-template-rows:28px 1fr;overflow:hidden;z-index:0}
+.mockwin .bar{display:flex;align-items:center;gap:8px;padding-inline:12px;border-bottom:1px solid var(--win-line);font-size:.72rem;color:var(--muted)}
+.mockwin .code{padding:12px 14px;font-size:.74rem;line-height:1.7;color:var(--muted);white-space:pre;overflow:hidden}
+.mockwin .code b{color:var(--fg);font-weight:500}
+.taskbar{position:absolute;inset:auto 0 0 0;height:40px;background:var(--taskbar);border-top:1px solid var(--win-line);display:flex;justify-content:center;align-items:center;gap:8px;z-index:0}
+.taskbar i{width:22px;height:22px;border-radius:6px;background:var(--win-line);display:block}
+.taskbar i:nth-child(3){background:var(--accent);opacity:.8}
+
+/* ---------- Island ---------- */
+.island{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:3;background:var(--isl);color:var(--isl-fg);
+  border-radius:0 0 20px 20px;border:1px solid var(--isl-line);border-top:0;
+  box-shadow:0 14px 34px -12px #0009,0 2px 6px -2px #0006;overflow:hidden;
+  width:96px;max-height:6px;transition:width .42s var(--spring),max-height .42s var(--spring),border-radius .3s ease}
+.island[data-mode="hidden"]{cursor:pointer}
+.island[data-mode="peek"]{width:66px;max-height:48px;border-radius:0 0 22px 22px}
+.island[data-mode="compact"]{width:min(370px,calc(100% - 32px));max-height:54px}
+.island[data-mode="expanded"]{width:min(470px,calc(100% - 20px));max-height:min(470px,calc(100% - 50px));border-radius:0 0 24px 24px}
+.island[data-status="approval"]{box-shadow:0 14px 34px -12px #0009,0 0 0 1px color-mix(in srgb,var(--warn) 45%,transparent)}
+
+.head{display:flex;align-items:center;gap:10px;height:52px;padding:0 12px 0 8px;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.head:focus-visible{outline:2px solid var(--drip);outline-offset:-3px;border-radius:14px}
+.island[data-mode="hidden"] .head{opacity:0}
+.island[data-mode="peek"] .head{height:48px;padding:0;justify-content:center}
+.island[data-mode="peek"] .head-text,.island[data-mode="peek"] .chip{display:none}
+canvas.drop{width:40px;height:46px;flex:none}
+.head-text{min-width:0;flex:1;display:grid;line-height:1.25}
+.head-text .proj{font-weight:600;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.head-text .now{font-size:.76rem;color:var(--isl-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:none;font-size:.68rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:99px;
+  background:color-mix(in srgb,var(--c,var(--drip)) 16%,transparent);color:var(--c,var(--drip))}
+.island[data-status="approval"] .chip{--c:var(--warn)}
+.island[data-status="finished"] .chip{--c:var(--ok)}
+.island[data-status="error"] .chip{--c:var(--bad)}
+.island[data-status="idle"] .chip{--c:var(--isl-muted)}
+
+.body{padding:2px 16px 16px;display:grid;gap:12px;max-height:calc(min(470px,100vh) - 54px);overflow:auto}
+.island:not([data-mode="expanded"]) .body{display:none}
+.tabs{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--isl-raise);justify-self:start}
+.tabs button{border:0;background:none;color:var(--isl-muted);font:inherit;font-size:.78rem;font-weight:500;padding:4px 12px;border-radius:7px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--isl-line);color:var(--isl-fg)}
+.tabs button:focus-visible,.btn:focus-visible,.ibtn:focus-visible{outline:2px solid var(--drip);outline-offset:2px}
+
+.view{display:grid;gap:10px}
+.view-title{font-family:var(--f-display);font-variation-settings:"CASL" 1;font-weight:700;font-size:1.05rem;margin:0}
+.sub{font-size:.78rem;color:var(--isl-muted);margin:0}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.steps li{display:grid;grid-template-columns:10px 78px 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;font-size:.8rem}
+.steps li:first-child{background:var(--isl-raise)}
+.steps .dot{width:7px;height:7px;border-radius:50%;background:var(--isl-muted)}
+.steps li[data-s="running"] .dot{background:var(--drip);box-shadow:0 0 0 0 var(--drip);animation:pulse 1.4s infinite}
+.steps li[data-s="failed"] .dot{background:var(--bad)}
+.steps li[data-s="done"] .dot{background:var(--ok)}
+.steps .tool{font-weight:600;color:var(--isl-fg)}
+.steps .tgt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--isl-muted)}
+.steps .t{color:var(--isl-muted);font-size:.7rem;font-variant-numeric:tabular-nums}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--drip) 60%,transparent)}100%{box-shadow:0 0 0 7px transparent}}
+
+.cmd{margin:0;padding:10px 12px;border-radius:10px;background:var(--isl-raise);border:1px solid var(--isl-line);font-size:.8rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--isl-fg)}
+.timer{display:grid;gap:5px}
+.timer .track{height:4px;border-radius:4px;background:var(--isl-line);overflow:hidden}
+.timer .fill{height:100%;background:var(--warn);transform-origin:left;width:100%}
+.timer .sub{font-variant-numeric:tabular-nums}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions .wide{grid-column:1/-1}
+.ibtn{border:1px solid var(--isl-line);background:var(--isl-raise);color:var(--isl-fg);font:inherit;font-size:.84rem;font-weight:600;padding:9px 10px;border-radius:10px;cursor:pointer;transition:transform .12s ease,background .15s}
+.ibtn:hover{background:var(--isl-line)}
+.ibtn:active{transform:scale(.97)}
+.ibtn.go{background:var(--drip);border-color:var(--drip);color:#04222A}
+.ibtn.go:hover{filter:brightness(1.08)}
+.ibtn.no{color:var(--bad)}
+.ibtn.quiet{font-weight:500;color:var(--isl-muted)}
+.stats{display:flex;flex-wrap:wrap;gap:6px}
+.stats span{font-size:.76rem;padding:4px 10px;border-radius:99px;background:var(--isl-raise);color:var(--isl-muted)}
+.stats b{color:var(--isl-fg);font-weight:600;font-variant-numeric:tabular-nums}
+.big{font-family:var(--f-display);font-variation-settings:"CASL" 1;font-weight:800;font-size:1.6rem;line-height:1.1;margin:0;font-variant-numeric:tabular-nums}
+.big.ok{color:var(--ok)} .big.bad{color:var(--bad)}
+
+.chat{display:grid;gap:8px}
+.msgs{display:grid;gap:6px;max-height:190px;overflow:auto}
+.msg{max-width:85%;padding:7px 11px;border-radius:12px;font-size:.82rem;line-height:1.45}
+.msg.me{justify-self:end;background:var(--drip);color:#04222A;border-bottom-right-radius:4px}
+.msg.ai{justify-self:start;background:var(--isl-raise);border:1px solid var(--isl-line);border-bottom-left-radius:4px}
+.chat form{display:flex;gap:6px}
+.chat input{flex:1;min-width:0;background:var(--isl-raise);border:1px solid var(--isl-line);color:var(--isl-fg);border-radius:10px;padding:8px 11px;font:inherit;font-size:.84rem}
+.chat input:focus-visible{outline:2px solid var(--drip);outline-offset:1px}
+
+/* ---------- Simulator ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px}
+.panel-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px}
+.panel-head p{margin:0;color:var(--muted);font-size:.86rem;max-width:56ch}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:.84rem;font-weight:500;padding:8px 13px;border-radius:9px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.btn:disabled{opacity:.5;cursor:default}
+.btn .mono{font-size:.78rem}
+.io{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.io>div{min-width:0;display:grid;gap:6px;align-content:start}
+.io pre{margin:0;padding:12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:.74rem;line-height:1.5;overflow:auto;max-height:240px;color:var(--fg)}
+
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+.tablewrap{overflow-x:auto}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td:first-child{white-space:nowrap}
+td code{font-size:.8rem}
+.note{margin:0;color:var(--muted);font-size:.86rem;max-width:68ch}
+.note code{font-size:.8rem;color:var(--fg)}
+
+@media (max-width:520px){
+  .mockwin{right:6%;top:38%}
+  .steps li{grid-template-columns:10px 64px 1fr auto}
+}
+@media (prefers-reduced-motion: reduce){
+  .island{transition:none}
+  .steps li[data-s="running"] .dot{animation:none}
+}
+</style>
+
+<main class="wrap">
+  <header>
+    <h1 class="disp">Drip<span>.</span></h1>
+    <p>A small companion for Claude Code on Windows. It hangs from the top edge of your screen, shows what your session is doing, and asks you before Claude runs anything that needs permission. This is a prototype: every event below is simulated.</p>
+  </header>
+
+  <section aria-label="Desktop preview">
+    <div class="screen" id="screen">
+      <div class="hotzone" id="hotzone" title="Hover or tap the top edge"></div>
+
+      <div class="island" id="island" data-mode="expanded" data-status="working">
+        <button class="head" id="head" type="button" aria-label="Toggle Drip">
+          <canvas class="drop" id="drop" width="80" height="92"></canvas>
+          <span class="head-text"><span class="proj" id="proj">weather-cli</span><span class="now" id="now">Edit · forecast.ts</span></span>
+          <span class="chip" id="chip">Working</span>
+        </button>
+        <div class="body">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" id="tab-session" aria-selected="true">Session</button>
+            <button type="button" role="tab" id="tab-chat" aria-selected="false">Chat</button>
+          </div>
+
+          <div class="view" id="v-activity">
+            <p class="sub" id="elapsed">Working for 0:42</p>
+            <ol class="steps" id="steps"></ol>
+          </div>
+
+          <div class="view" id="v-approval" hidden>
+            <p class="view-title" id="ap-title">Claude wants to run a command</p>
+            <pre class="cmd mono" id="ap-cmd"></pre>
+            <div class="timer"><div class="track"><div class="fill" id="ap-fill"></div></div><p class="sub" id="ap-left">1:55 to answer</p></div>
+            <div class="actions">
+              <button class="ibtn no" type="button" id="b-deny">Deny</button>
+              <button class="ibtn go" type="button" id="b-allow">Allow</button>
+              <button class="ibtn quiet wide" type="button" id="b-always">Always allow this</button>
+            </div>
+            <p class="sub">Always allow saves the rule to your Claude Code permissions, so it won't ask again.</p>
+          </div>
+
+          <div class="view" id="v-finished" hidden>
+            <p class="big ok" id="fin-time">Done in 1:12</p>
+            <div class="stats" id="fin-stats"></div>
+            <ol class="steps" id="fin-steps"></ol>
+          </div>
+
+          <div class="view" id="v-error" hidden>
+            <p class="big bad">Session stopped</p>
+            <pre class="cmd mono" id="err-msg"></pre>
+            <p class="sub">Claude Code shows the full error in your terminal.</p>
+          </div>
+
+          <div class="view chat" id="v-chat" hidden>
+            <div class="msgs" id="msgs">
+              <div class="msg me">What does parseHourly return?</div>
+              <div class="msg ai">An array of HourlyPoint objects, one per hour, each with a temperature in °C and a rain chance from 0 to 1.</div>
+            </div>
+            <form id="chat-form" autocomplete="off">
+              <input id="chat-input" type="text" placeholder="Ask Claude something" aria-label="Message">
+              <button class="ibtn go" type="submit">Send</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="mockwin" aria-hidden="true">
+        <div class="bar"><span class="mono">forecast.ts</span><span>weather-cli</span></div>
+        <div class="code mono"><b>export function</b> parseHourly(raw: ApiHour[]) {
+  <b>return</b> raw.map(h =&gt; ({
+    time: <b>new</b> Date(h.ts * 1000),
+    tempC: round1(h.temp),
+    rain: h.pop,
+  }));
+}</div>
+      </div>
+      <div class="taskbar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="sim-h">
+    <div class="panel-head">
+      <h2 id="sim-h">Simulate Claude Code</h2>
+      <p>The island opens on an example session. Each button sends the same JSON a real Claude Code hook would. Tap the top edge to wake Drip when it's hidden.</p>
+    </div>
+    <div class="btns">
+      <button class="btn primary" type="button" id="s-demo">Play a full session</button>
+      <button class="btn" type="button" data-ev="SessionStart"><span class="mono">SessionStart</span></button>
+      <button class="btn" type="button" data-ev="PreToolUse"><span class="mono">PreToolUse</span></button>
+      <button class="btn" type="button" data-ev="PermissionRequest"><span class="mono">PermissionRequest</span></button>
+      <button class="btn" type="button" data-ev="Stop"><span class="mono">Stop</span></button>
+      <button class="btn" type="button" data-ev="StopFailure"><span class="mono">StopFailure</span></button>
+      <button class="btn" type="button" data-ev="SessionEnd"><span class="mono">SessionEnd</span></button>
+      <button class="btn" type="button" id="s-reset">Reset</button>
+    </div>
+    <div class="io">
+      <div><span class="label">Hook input (stdin)</span><pre class="mono" id="io-in">Send an event to see its payload.</pre></div>
+      <div><span class="label">Hook output (stdout)</span><pre class="mono" id="io-out">Permission requests print a decision here.</pre></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="map-h">
+    <div class="panel-head"><h2 id="map-h">What each hook does</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Hook event</th><th>Drip</th></tr></thead>
+        <tbody>
+          <tr><td><code class="mono">SessionStart</code></td><td>Wakes up and shows the compact pill with the project name.</td></tr>
+          <tr><td><code class="mono">UserPromptSubmit</code><br><code class="mono">PreToolUse</code></td><td>Turns blue and busy. Adds the step to the activity list.</td></tr>
+          <tr><td><code class="mono">PostToolUse</code><br><code class="mono">PostToolUseFailure</code></td><td>Marks the step done (green) or failed (red).</td></tr>
+          <tr><td><code class="mono">PermissionRequest</code></td><td>Opens, turns amber, bounces. Holds the hook open up to 115 s for Deny, Allow or Always allow. No answer prints nothing, so Claude Code asks in the terminal.</td></tr>
+          <tr><td><code class="mono">Stop</code></td><td>Shows the summary in green, folds to the pill after 10 s, hides after 15 s more.</td></tr>
+          <tr><td><code class="mono">StopFailure</code></td><td>Opens in red with the error.</td></tr>
+          <tr><td><code class="mono">SessionEnd</code></td><td>Hides back into the top edge.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Porting to Tauri: everything above runs through one function, <code class="mono">applyHook(payload)</code>, in this page's script. In the real app, a small relay exe receives the hook's stdin, sends it over a named pipe to the Rust side, which forwards it to the front end with <code class="mono">emit("hook", payload)</code>. The front end calls the same <code class="mono">applyHook</code>.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const island = $('#island');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Example data ---------- */
+const CWD = 'C:\\Users\\you\\code\\weather-cli';
+const SID = '5f2c9e1a-7b3d-4c11-9a0e-2d8f61c4b7a3';
+const TRANSCRIPT = 'C:\\Users\\you\\.claude\\projects\\weather-cli\\5f2c9e1a.jsonl';
+const base = name => ({ session_id: SID, transcript_path: TRANSCRIPT, cwd: CWD, hook_event_name: name });
+const TOOLS = [
+  ['Read',  { file_path: CWD + '\\src\\forecast.ts' }],
+  ['Grep',  { pattern: 'round1', path: CWD + '\\src' }],
+  ['Edit',  { file_path: CWD + '\\src\\forecast.ts', old_string: 'Math.round(h.temp)', new_string: 'round1(h.temp)' }],
+  ['Write', { file_path: CWD + '\\src\\round.ts', content: 'export const round1 = (n: number) => Math.round(n * 10) / 10;\n' }],
+  ['Glob',  { pattern: 'src/**/*.test.ts' }],
+];
+const PERMS = [
+  { tool_name: 'Bash', tool_input: { command: 'npm test -- --run forecast', description: 'Run the forecast tests' },
+    permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }] },
+  { tool_name: 'Bash', tool_input: { command: 'git commit -am "Round hourly temps to one decimal"', description: 'Commit the change' },
+    permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'git commit:*' }], behavior: 'allow', destination: 'localSettings' }] },
+  { tool_name: 'WebFetch', tool_input: { url: 'https://api.open-meteo.com/v1/forecast?latitude=42.3&longitude=-83.0&hourly=temperature_2m', prompt: 'Check the response shape' },
+    permission_suggestions: [] },
+];
+let toolIdx = 0, permIdx = 0, uid = 0;
+
+/* ---------- State ---------- */
+const S = {};
+const timers = new Set();
+const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+
+function initial() {
+  timers.forEach(clearTimeout); timers.clear();
+  const now = Date.now();
+  Object.assign(S, {
+    mode: 'expanded', view: 'activity', tab: 'session', status: 'working',
+    project: 'weather-cli', started: now - 42000, finishedAt: null, lastActive: now,
+    approval: null, error: null,
+    steps: [
+      { id: ++uid, tool: 'Edit', target: 'forecast.ts', status: 'running', at: now - 4000 },
+      { id: ++uid, tool: 'Search', target: '"parseHourly" in src', status: 'done', at: now - 17000 },
+      { id: ++uid, tool: 'Read', target: 'forecast.ts', status: 'done', at: now - 29000 },
+      { id: ++uid, tool: 'Prompt', target: 'Round hourly temps to one decimal', status: 'done', at: now - 42000 },
+    ],
+  });
+}
+
+/* ---------- Hook payload → readable step ---------- */
+const LABEL = { Bash: 'Run', Read: 'Read', Edit: 'Edit', MultiEdit: 'Edit', Write: 'Write', Grep: 'Search', Glob: 'Find', WebFetch: 'Fetch', WebSearch: 'Web search', Task: 'Agent', NotebookEdit: 'Notebook' };
+const baseName = p => String(p).split(/[\\/]/).filter(Boolean).pop() || p;
+const cut = (s, n) => (s = String(s ?? '')).length > n ? s.slice(0, n - 1) + '…' : s;
+function target(tool, input = {}) {
+  if (input.command) return cut(input.command, 48);
+  if (input.file_path) return baseName(input.file_path);
+  if (tool === 'Grep' && input.pattern) return `"${cut(input.pattern, 30)}"${input.path ? ' in ' + baseName(input.path) : ''}`;
+  if (input.pattern) return cut(input.pattern, 40);
+  if (input.url) return cut(input.url.replace(/^https?:\/\//, ''), 44);
+  if (input.query) return cut(input.query, 44);
+  return '';
+}
+function pushStep(step) {
+  S.steps.unshift({ id: ++uid, at: Date.now(), ...step });
+  if (S.steps.length > 20) S.steps.pop();
+}
+function reveal(m) { if (S.mode === 'hidden' || S.mode === 'peek') S.mode = m; }
+
+/* ---------- The state machine: one function, same in the Tauri app ---------- */
+function applyHook(p) {
+  S.lastActive = Date.now();
+  showIO(p, '(none) This event only updates the island.');
+  switch (p.hook_event_name) {
+    case 'SessionStart':
+      if (S.approval) decide('ask', false, true);
+      S.project = baseName(p.cwd); S.started = Date.now(); S.finishedAt = null;
+      S.steps = []; S.status = 'idle'; S.view = 'activity'; S.tab = 'session'; S.error = null;
+      reveal('compact'); if (S.mode === 'expanded') S.mode = 'compact';
+      break;
+    case 'UserPromptSubmit':
+      S.status = 'working'; S.view = 'activity';
+      pushStep({ tool: 'Prompt', target: cut(p.prompt, 60), status: 'done' });
+      reveal('compact');
+      break;
+    case 'PreToolUse':
+      if (S.status !== 'approval') S.status = 'working';
+      if (S.view === 'finished' || S.view === 'error') S.view = 'activity';
+      pushStep({ tool: LABEL[p.tool_name] || p.tool_name, target: target(p.tool_name, p.tool_input), status: 'running', key: p.tool_use_id });
+      reveal('compact');
+      break;
+    case 'PostToolUse':
+    case 'PostToolUseFailure': {
+      const s = S.steps.find(x => x.key === p.tool_use_id) || S.steps.find(x => x.status === 'running');
+      if (s) s.status = p.hook_event_name === 'PostToolUse' ? 'done' : 'failed';
+      break;
+    }
+    case 'PermissionRequest':
+      if (S.approval) decide('ask', false, true);
+      S.approval = { tool: p.tool_name, input: p.tool_input || {}, suggestions: p.permission_suggestions || [], deadline: Date.now() + 115000 };
+      S.status = 'approval'; S.view = 'approval'; S.tab = 'session'; S.mode = 'expanded';
+      showIO(p, 'Waiting for your answer on the island…');
+      break;
+    case 'Notification':
+      pushStep({ tool: 'Note', target: cut(p.message, 60), status: 'done' });
+      break;
+    case 'Stop':
+      if (S.approval) decide('ask', false, true);
+      S.steps.forEach(s => { if (s.status === 'running') s.status = 'done'; });
+      S.status = 'finished'; S.finishedAt = Date.now(); S.view = 'finished'; S.tab = 'session'; S.mode = 'expanded';
+      later(() => { if (S.status === 'finished' && S.mode === 'expanded' && S.view === 'finished') { S.mode = 'compact'; render(); } }, 10000);
+      break;
+    case 'StopFailure':
+      if (S.approval) decide('ask', false, true);
+      S.steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; });
+      S.status = 'error'; S.error = p.error || 'Request failed'; S.view = 'error'; S.tab = 'session'; S.mode = 'expanded';
+      break;
+    case 'SessionEnd':
+      if (S.approval) decide('ask', false, true);
+      S.status = 'idle'; S.mode = 'hidden';
+      break;
+  }
+  render();
+}
+
+/* ---------- Answering a permission request ---------- */
+let waiter = null;
+function decide(choice, timedOut = false, silent = false) {
+  const a = S.approval; if (!a) return;
+  let out = null;
+  if (choice === 'allow') out = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } };
+  if (choice === 'always') out = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedPermissions: a.suggestions } } };
+  if (choice === 'deny') out = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Denied from Drip' } } };
+  if (!silent) $('#io-out').textContent = out ? JSON.stringify(out, null, 2)
+    : `(no output) Claude Code asks in the terminal${timedOut ? ' after the 115 s timeout' : ''}.`;
+  if (choice === 'deny') pushStep({ tool: 'Denied', target: target(a.tool, a.input), status: 'failed' });
+  S.approval = null; S.status = 'working'; S.view = 'activity'; S.lastActive = Date.now();
+  if (!silent) S.mode = 'compact';
+  const w = waiter; waiter = null; if (w) w(choice);
+  if (!silent) render();
+}
+
+/* ---------- Rendering ---------- */
+const fmt = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const CHIP = { working: 'Working', approval: 'Needs you', finished: 'Done', error: 'Error', idle: 'Ready' };
+
+function stepList(el, steps) {
+  el.replaceChildren(...steps.map(s => {
+    const li = document.createElement('li'); li.dataset.s = s.status;
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const tool = document.createElement('span'); tool.className = 'tool'; tool.textContent = s.tool;
+    const tgt = document.createElement('span'); tgt.className = 'tgt mono'; tgt.textContent = s.target;
+    const t = document.createElement('span'); t.className = 't'; t.dataset.at = s.at;
+    li.append(dot, tool, tgt, t); return li;
+  }));
+}
+function headNow() {
+  if (S.status === 'approval') return 'Waiting for your answer';
+  if (S.status === 'finished') return `Finished in ${fmt(S.finishedAt - S.started)}`;
+  if (S.status === 'error') return 'Stopped with an error';
+  if (S.status === 'idle') return S.steps.length ? 'Ready' : 'Session started';
+  const s = S.steps[0]; return s ? `${s.tool} · ${s.target}` : 'Working';
+}
+function render() {
+  island.dataset.mode = S.mode;
+  island.dataset.status = S.status;
+  $('#proj').textContent = S.project;
+  $('#now').textContent = headNow();
+  $('#chip').textContent = CHIP[S.status];
+  const chat = S.tab === 'chat';
+  $('#tab-session').setAttribute('aria-selected', String(!chat));
+  $('#tab-chat').setAttribute('aria-selected', String(chat));
+  for (const v of ['activity', 'approval', 'finished', 'error']) $('#v-' + v).hidden = chat || S.view !== v;
+  $('#v-chat').hidden = !chat;
+
+  if (S.view === 'activity') stepList($('#steps'), S.steps.slice(0, 6));
+  if (S.view === 'approval' && S.approval) {
+    const a = S.approval;
+    $('#ap-title').textContent = a.tool === 'Bash' ? 'Claude wants to run a command'
+      : (a.tool === 'Edit' || a.tool === 'Write') ? 'Claude wants to change a file'
+      : a.tool === 'WebFetch' ? 'Claude wants to open a web page' : `Claude wants to use ${a.tool}`;
+    $('#ap-cmd').textContent = a.input.command || a.input.url || a.input.file_path || JSON.stringify(a.input);
+    $('#b-always').hidden = !a.suggestions.length;
+  }
+  if (S.view === 'finished') {
+    const done = S.steps.filter(s => s.status === 'done');
+    const files = new Set(done.filter(s => s.tool === 'Edit' || s.tool === 'Write').map(s => s.target)).size;
+    const cmds = done.filter(s => s.tool === 'Run').length;
+    const failed = S.steps.filter(s => s.status === 'failed').length;
+    $('#fin-time').textContent = `Done in ${fmt((S.finishedAt || Date.now()) - S.started)}`;
+    const stats = [[S.steps.filter(s => s.tool !== 'Prompt').length, 'steps'], [files, files === 1 ? 'file changed' : 'files changed'], [cmds, cmds === 1 ? 'command' : 'commands']];
+    if (failed) stats.push([failed, 'failed']);
+    $('#fin-stats').replaceChildren(...stats.map(([n, l]) => { const s = document.createElement('span'); const b = document.createElement('b'); b.textContent = n; s.append(b, ' ' + l); return s; }));
+    stepList($('#fin-steps'), S.steps.slice(0, 4));
+  }
+  if (S.view === 'error') $('#err-msg').textContent = S.error;
+  tickText();
+}
+function tickText() {
+  const now = Date.now();
+  if (S.view === 'activity' && S.mode === 'expanded') {
+    $('#elapsed').textContent = S.status === 'idle' ? 'Waiting for a prompt' : `Working for ${fmt(now - S.started)}`;
+    document.querySelectorAll('#steps .t').forEach(t => t.textContent = fmt(now - Number(t.dataset.at)) + ' ago');
+  }
+  if (S.approval) {
+    const left = S.approval.deadline - now;
+    $('#ap-left').textContent = `${fmt(left)} to answer`;
+    $('#ap-fill').style.transform = `scaleX(${Math.max(0, left / 115000)})`;
+    if (left <= 0) decide('ask', true);
+  }
+  if (S.mode === 'compact' && (S.status === 'idle' || S.status === 'finished') && now - S.lastActive > 25000) { S.mode = 'hidden'; render(); }
+}
+function showIO(p, out) {
+  $('#io-in').textContent = JSON.stringify(p, null, 2);
+  $('#io-out').textContent = out;
+}
+
+/* ---------- Interaction ---------- */
+$('#head').addEventListener('click', e => {
+  e.stopPropagation(); S.lastActive = Date.now();
+  S.mode = { hidden: 'peek', peek: 'compact', compact: 'expanded', expanded: 'compact' }[S.mode];
+  render();
+});
+island.addEventListener('click', () => { if (S.mode === 'hidden') { S.mode = 'peek'; render(); } });
+$('#hotzone').addEventListener('pointerenter', () => { if (S.mode === 'hidden') { S.mode = 'peek'; render(); } });
+$('#hotzone').addEventListener('click', () => { if (S.mode === 'hidden') S.mode = 'peek'; else if (S.mode === 'peek') S.mode = 'compact'; render(); });
+island.addEventListener('pointerleave', () => { later(() => { if (S.mode === 'peek') { S.mode = 'hidden'; render(); } }, 900); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  S.mode = S.mode === 'expanded' ? 'compact' : 'hidden'; render();
+});
+$('#tab-session').addEventListener('click', () => { S.tab = 'session'; render(); });
+$('#tab-chat').addEventListener('click', () => { S.tab = 'chat'; render(); });
+$('#b-allow').addEventListener('click', () => decide('allow'));
+$('#b-deny').addEventListener('click', () => decide('deny'));
+$('#b-always').addEventListener('click', () => decide('always'));
+$('#chat-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const inp = $('#chat-input'), text = inp.value.trim(); if (!text) return;
+  const add = (cls, t) => { const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = t; $('#msgs').append(d); $('#msgs').scrollTop = 1e6; };
+  add('me', text); inp.value = '';
+  later(() => add('ai', 'Prototype only. In the app this goes to the Anthropic API with your key.'), 500);
+});
+
+/* ---------- Simulator buttons ---------- */
+function makeEvent(name) {
+  if (name === 'PreToolUse') { const [tool, input] = TOOLS[toolIdx++ % TOOLS.length]; return { ...base(name), tool_name: tool, tool_input: input, tool_use_id: 'toolu_' + (++uid) }; }
+  if (name === 'PermissionRequest') return { ...base(name), ...PERMS[permIdx++ % PERMS.length] };
+  if (name === 'SessionStart') return { ...base(name), source: 'startup' };
+  if (name === 'StopFailure') return { ...base(name), error: 'rate_limit_error: Number of request tokens has exceeded your per-minute rate limit' };
+  if (name === 'SessionEnd') return { ...base(name), reason: 'prompt_input_exit' };
+  return base(name);
+}
+document.querySelectorAll('[data-ev]').forEach(b => b.addEventListener('click', () => {
+  const name = b.dataset.ev;
+  if (name === 'PreToolUse') {
+    const p = makeEvent(name); applyHook(p);
+    later(() => applyHook({ ...base('PostToolUse'), tool_name: p.tool_name, tool_input: p.tool_input, tool_use_id: p.tool_use_id }), 1400);
+  } else applyHook(makeEvent(name));
+}));
+
+let demoToken = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function demo() {
+  const token = ++demoToken, btn = $('#s-demo');
+  btn.disabled = true; btn.textContent = 'Playing…';
+  const live = () => token === demoToken;
+  const tool = async (name, input, ms) => {
+    const id = 'toolu_' + (++uid);
+    applyHook({ ...base('PreToolUse'), tool_name: name, tool_input: input, tool_use_id: id }); await sleep(ms);
+    if (live()) applyHook({ ...base('PostToolUse'), tool_name: name, tool_input: input, tool_use_id: id });
+    await sleep(500);
+  };
+  try {
+    applyHook({ ...base('SessionStart'), source: 'startup' }); await sleep(1600); if (!live()) return;
+    applyHook({ ...base('UserPromptSubmit'), prompt: 'Round the hourly temperatures to one decimal' }); await sleep(1000); if (!live()) return;
+    await tool('Read', TOOLS[0][1], 1200); if (!live()) return;
+    await tool('Grep', TOOLS[1][1], 1000); if (!live()) return;
+    await tool('Write', TOOLS[3][1], 1300); if (!live()) return;
+    await tool('Edit', TOOLS[2][1], 1300); if (!live()) return;
+    const answer = new Promise(r => { waiter = r; });
+    applyHook({ ...base('PermissionRequest'), ...PERMS[0] });
+    const choice = await answer; if (!live()) return;
+    await sleep(500);
+    if (choice !== 'deny') { await tool('Bash', PERMS[0].tool_input, 2200); if (!live()) return; }
+    applyHook(base('Stop'));
+  } finally {
+    if (live()) { btn.disabled = false; btn.textContent = 'Play a full session'; }
+  }
+}
+$('#s-demo').addEventListener('click', demo);
+$('#s-reset').addEventListener('click', () => {
+  demoToken++; waiter = null;
+  const btn = $('#s-demo'); btn.disabled = false; btn.textContent = 'Play a full session';
+  initial(); render();
+  $('#io-in').textContent = 'Send an event to see its payload.';
+  $('#io-out').textContent = 'Permission requests print a decision here.';
+});
+
+/* ---------- The droplet ---------- */
+const cv = $('#drop'), ctx = cv.getContext('2d');
+let C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['drip', 'warn', 'ok', 'bad', 'eye', 'eye-white']) C[k] = cs.getPropertyValue('--' + k).trim();
+}
+readColors();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+let px = innerWidth / 2, py = 0;
+addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; });
+let nextBlink = performance.now() + 2500, blinkUntil = 0;
+
+function sizeCanvas() {
+  const dpr = Math.min(3, devicePixelRatio || 1);
+  cv.width = Math.round(40 * dpr); cv.height = Math.round(46 * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+sizeCanvas();
+addEventListener('resize', sizeCanvas);
+
+function draw(now) {
+  const t = reduce ? 0 : now / 1000, w = 40, h = 46, st = S.status;
+  ctx.clearRect(0, 0, w, h);
+  const color = { approval: C.warn, finished: C.ok, error: C.bad }[st] || C.drip;
+  let cx = w / 2, cy = h * 0.64; const r = 11;
+  if (!reduce) {
+    if (st === 'approval') cy -= Math.abs(Math.sin(t * 5)) * 3;
+    if (st === 'finished') cy -= Math.max(0, Math.sin(t * 3.2)) * 3.5;
+    if (st === 'error') cx += Math.sin(t * 38) * 0.7;
+  }
+  const speed = st === 'working' ? 4 : 2;
+  const sx = 1 + (reduce ? 0 : 0.05 * Math.sin(t * speed)), sy = 1 / sx;
+
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(sx, sy);
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 1.8);
+  ctx.bezierCurveTo(r * 0.35, -r * 1.2, r, -r * 0.6, r, 0);
+  ctx.arc(0, 0, r, 0, Math.PI);
+  ctx.bezierCurveTo(-r, -r * 0.6, -r * 0.35, -r * 1.2, 0, -r * 1.8);
+  ctx.closePath();
+  ctx.fillStyle = color; ctx.fill();
+  const shade = ctx.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.2, 0, 0, r * 1.5);
+  shade.addColorStop(0, 'rgba(255,255,255,0.22)'); shade.addColorStop(0.6, 'rgba(255,255,255,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = shade; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-r * 0.48, -r * 0.55, r * 0.14, r * 0.28, -0.5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill();
+
+  // Eyes
+  const rect = cv.getBoundingClientRect();
+  let lx = 0, ly = 0;
+  if (rect.width) {
+    const dx = px - (rect.left + rect.width / 2), dy = py - (rect.top + rect.height / 2);
+    lx = dx / (Math.abs(dx) + 140); ly = dy / (Math.abs(dy) + 140);
+  }
+  if (st === 'working' && !reduce) { lx = Math.sin(t * 1.6) * 0.9; ly = 0.3; }
+  if (now > nextBlink) { blinkUntil = now + 130; nextBlink = now + 2500 + Math.random() * 3500; }
+  const blink = now < blinkUntil ? 0.12 : 1;
+  const ey = r * 0.08, ex = r * 0.38;
+  ctx.lineCap = 'round'; ctx.lineWidth = 1.6; ctx.strokeStyle = C.eye;
+  for (const side of [-1, 1]) {
+    const x = side * ex;
+    if (st === 'finished') { ctx.beginPath(); ctx.arc(x, ey + 1.5, r * 0.2, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); continue; }
+    if (st === 'error') { const k = r * 0.15; ctx.beginPath(); ctx.moveTo(x - k, ey - k); ctx.lineTo(x + k, ey + k); ctx.moveTo(x + k, ey - k); ctx.lineTo(x - k, ey + k); ctx.stroke(); continue; }
+    const big = st === 'approval' ? 1.18 : 1;
+    ctx.beginPath(); ctx.ellipse(x, ey, r * 0.21 * big, r * 0.27 * big * blink, 0, 0, Math.PI * 2);
+    ctx.fillStyle = C['eye-white']; ctx.fill();
+    if (blink > 0.5) { ctx.beginPath(); ctx.arc(x + lx * r * 0.09, ey + ly * r * 0.1, r * 0.12 * big, 0, Math.PI * 2); ctx.fillStyle = C.eye; ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+let lastText = 0;
+function loop(now) {
+  if (S.mode !== 'hidden') draw(now);
+  if (now - lastText > 250) { lastText = now; tickText(); }
+  requestAnimationFrame(loop);
+}
+
+initial(); render(); requestAnimationFrame(loop);
+})();
+</script>

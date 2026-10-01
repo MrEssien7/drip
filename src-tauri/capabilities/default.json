@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Drip's windows only listen for events and call Drip's own commands.",
+  "windows": ["island", "installer"],
+  "permissions": ["core:event:default", "core:window:allow-close"]
+}

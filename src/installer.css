@@ -1,0 +1,46 @@
+/* The hook installer window. Colours and type follow drip.html's page palette. */
+@import "@fontsource-variable/recursive/full.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+:root{
+  --bg:#EDF1F4; --surface:#F8FAFB; --fg:#16202A; --muted:#566473; --line:#D2DAE1;
+  --accent:#0A7E9C; --accent-fg:#FFFFFF; --add:#1D7A45; --add-bg:#E3F4EA; --del:#B33A3A; --del-bg:#FBE7E7;
+  --f-display:"Recursive Variable", ui-rounded, system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  --f-mono:"Recursive Variable", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#0E1317; --surface:#141B21; --fg:#E4EBF0; --muted:#8C9AA7; --line:#26323C;
+  --accent:#4CC2DB; --accent-fg:#06222A; --add:#7FE0A6; --add-bg:#12301F; --del:#F59A9A; --del-bg:#3A1717;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.mono{font-family:var(--f-mono);font-variation-settings:"MONO" 1,"CASL" 0}
+.wrap{height:100%;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:14px;padding:20px 22px}
+header{display:grid;gap:4px}
+h1{margin:0;font-family:var(--f-display);font-variation-settings:"CASL" 1;font-weight:800;font-size:1.5rem;letter-spacing:-.01em}
+h2{margin:0;font-family:var(--f-display);font-variation-settings:"CASL" .6;font-weight:700;font-size:1rem}
+header p{margin:0;color:var(--muted);max-width:64ch}
+.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0;font-size:.86rem}
+.facts dt{color:var(--muted);font-weight:600}
+.facts dd{margin:0;overflow-wrap:anywhere;font-size:.8rem}
+.diff-wrap{min-height:0;display:grid;grid-template-rows:auto 1fr;gap:8px}
+.diff-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.legend{font-size:.78rem;color:var(--muted)}
+.legend .add{color:var(--add)} .legend .del{color:var(--del)}
+.diff{margin:0;min-height:0;overflow:auto;padding:10px 0;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-size:.76rem;line-height:1.55}
+.diff span{display:block;padding:0 12px;white-space:pre}
+.diff .a{background:var(--add-bg);color:var(--add)}
+.diff .d{background:var(--del-bg);color:var(--del)}
+.diff .c{color:var(--muted)}
+.msg{margin:0;min-height:1.5em;font-size:.88rem}
+.msg.ok{color:var(--add)} .msg.err{color:var(--del)}
+.buttons{display:flex;justify-content:flex-end;gap:8px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-weight:600;padding:8px 16px;border-radius:9px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,.diff:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

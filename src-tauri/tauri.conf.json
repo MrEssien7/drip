@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Drip",
+  "version": "0.1.0",
+  "identifier": "app.drip.companion",
+  "build": {
+    "beforeDevCommand": "npm run hook && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run hook && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "label": "island",
+        "title": "Drip",
+        "url": "index.html",
+        "width": 120,
+        "height": 8,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "resources": { "../target/release/drip-hook.exe": "drip-hook.exe" },
+    "category": "DeveloperTool",
+    "shortDescription": "A companion for Claude Code that hangs from the top of your screen",
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

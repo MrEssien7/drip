@@ -1,0 +1,17 @@
+[workspace]
+members = ["src-tauri", "hook"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Shared by the app and the relay. The relay starts on every hook event, so it
+# is built small and fast.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

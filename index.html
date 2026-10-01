@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drip</title>
+</head>
+<body>
+<div class="hotzone" id="hotzone"></div>
+
+<div class="island" id="island" data-mode="hidden" data-status="idle">
+  <button class="head" id="head" type="button" aria-label="Toggle Drip">
+    <canvas class="drop" id="drop" width="80" height="92"></canvas>
+    <span class="head-text"><span class="proj" id="proj"></span><span class="now" id="now"></span></span>
+    <span class="chip" id="chip">Ready</span>
+  </button>
+  <div class="body">
+    <!-- Chat is hidden for v1; the Session tab alone needs no tab bar. -->
+    <div class="tabs" role="tablist" hidden>
+      <button type="button" role="tab" id="tab-session" aria-selected="true">Session</button>
+    </div>
+
+    <div class="view" id="v-activity">
+      <p class="sub" id="elapsed">Waiting for a prompt</p>
+      <ol class="steps" id="steps"></ol>
+    </div>
+
+    <div class="view" id="v-approval" hidden>
+      <p class="view-title" id="ap-title">Claude wants to run a command</p>
+      <pre class="cmd mono" id="ap-cmd"></pre>
+      <div class="timer"><div class="track"><div class="fill" id="ap-fill"></div></div><p class="sub" id="ap-left">1:48 to answer</p></div>
+      <div class="actions">
+        <button class="ibtn no" type="button" id="b-deny">Deny</button>
+        <button class="ibtn go" type="button" id="b-allow">Allow</button>
+        <button class="ibtn quiet wide" type="button" id="b-always">Always allow this</button>
+      </div>
+      <p class="sub" id="ap-note">Always allow saves the rule to your Claude Code permissions, so it won't ask again.</p>
+    </div>
+
+    <div class="view" id="v-finished" hidden>
+      <p class="big ok" id="fin-time">Done in 0:00</p>
+      <div class="stats" id="fin-stats"></div>
+      <ol class="steps" id="fin-steps"></ol>
+    </div>
+
+    <div class="view" id="v-error" hidden>
+      <p class="big bad">Session stopped</p>
+      <pre class="cmd mono" id="err-msg"></pre>
+      <p class="sub">Claude Code shows the full error in your terminal.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
