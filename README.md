@@ -61,6 +61,16 @@ Claude Code ──stdin JSON──▶ drip-hook.exe ──\\.\pipe\drip-<SID>─
   `updatedPermissions`.
 - If Drip is closed, slow or crashes, or you don't answer, the relay prints
   nothing and exits 0, so Claude Code asks in the terminal as usual.
+- Claude Code shows its own prompt while the island waits, so you can answer
+  either place. A card leaves the island once its session moves on (the tool
+  runs or fails, or the turn ends).
+- Several sessions can ask at once: cards wait in line, each with its own
+  countdown. Questions (`AskUserQuestion`) and plan reviews (`ExitPlanMode`)
+  can't be answered with Allow/Deny, so they stay in the terminal and the
+  island only notes them.
+- Approval buttons ignore presses in a card's first 400 ms, and a click only
+  counts if it started on that button, so a double-click can't answer the
+  next card.
 
 ## Test without Claude Code
 

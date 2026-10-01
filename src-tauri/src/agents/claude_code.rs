@@ -93,6 +93,18 @@ pub fn normalize(p: &Value, decision_timeout_ms: u64) -> Option<AgentEvent> {
     match kind {
         Kind::Prompt => e.target = s(p, "prompt").map(|t| cut(t, 60)),
         Kind::Notice => e.target = s(p, "message").map(|t| cut(t, 60)),
+        // These come through PermissionRequest but are questions for the user
+        // (multiple choice, or a plan to review), not approvals. Allow/Deny
+        // can't answer them, so they stay in the terminal.
+        Kind::Permission if matches!(tool_name, Some("AskUserQuestion" | "ExitPlanMode")) => {
+            e.kind = Kind::Notice;
+            e.tool = Some("Question".into());
+            e.target = Some(if tool_name == Some("ExitPlanMode") {
+                "Plan ready to review in the terminal".into()
+            } else {
+                "Claude is asking you in the terminal".into()
+            });
+        }
         Kind::Permission => {
             e.needs_decision = true;
             e.detail = Some(approval_detail(&input));
@@ -177,6 +189,16 @@ mod tests {
 
         let plain = normalize(&with("PermissionRequest", json!({ "tool_name": "WebFetch", "tool_input": { "url": "https://x.dev" } })), 1).unwrap();
         assert!(!plain.request.unwrap().can_remember);
+    }
+
+    #[test]
+    fn questions_and_plans_stay_in_the_terminal() {
+        for (tool, text) in [("AskUserQuestion", "asking you"), ("ExitPlanMode", "Plan ready")] {
+            let e = normalize(&with("PermissionRequest", json!({ "tool_name": tool, "tool_input": {} })), 1).unwrap();
+            assert_eq!(e.kind, Kind::Notice, "{tool}");
+            assert!(!e.needs_decision && e.request.is_none(), "{tool}");
+            assert!(e.target.unwrap().contains(text), "{tool}");
+        }
     }
 
     #[test]

@@ -12,11 +12,11 @@ type View = "activity" | "approval" | "finished" | "error";
 type Choice = "allow" | "always" | "deny" | "ask";
 
 interface Step { id: number; tool: string; target: string; status: "running" | "done" | "failed"; at: number; key?: string }
-interface Approval { id: string; agent: string; tool: string; target: string; detail: string; canRemember: boolean; deadline: number; total: number }
+interface Approval { id: string; session: string; project: string; agent: string; tool: string; target: string; detail: string; canRemember: boolean; deadline: number; total: number }
 interface State {
   mode: Mode; view: View; status: Status;
-  project: string; started: number; finishedAt: number | null; lastActive: number;
-  approval: Approval | null; error: string | null; steps: Step[];
+  session: string; project: string; started: number; finishedAt: number | null; lastActive: number;
+  approval: Approval | null; queue: Approval[]; error: string | null; steps: Step[];
 }
 /** Mirrors `AgentEvent` in src-tauri/src/agents/mod.rs. */
 interface AgentEvent {
@@ -52,8 +52,8 @@ function initial() {
   const now = Date.now();
   Object.assign(S, {
     mode: "hidden", view: "activity", status: "idle",
-    project: "", started: now, finishedAt: null, lastActive: now,
-    approval: null, error: null, steps: [],
+    session: "", project: "", started: now, finishedAt: null, lastActive: now,
+    approval: null, queue: [], error: null, steps: [],
   } satisfies State);
 }
 
@@ -87,10 +87,21 @@ function reveal(m: Mode) { if (S.mode === "hidden" || S.mode === "peek") S.mode 
 /* ---------- The state machine ---------- */
 function applyHook(e: AgentEvent) {
   S.lastActive = Date.now();
-  if (!S.project && e.cwd) S.project = baseName(e.cwd);
+  settledElsewhere(e);
+  // The card on screen belongs to one session. Meanwhile other sessions only
+  // add steps, and their own permission requests wait in line behind it.
+  if (S.approval && e.session !== S.approval.session) {
+    if (e.kind === "permission") queueCard(e); else otherSession(e);
+    render();
+    return;
+  }
+  // Otherwise the island follows whichever session spoke last.
+  if (e.session !== S.session || !S.project) {
+    S.session = e.session;
+    if (e.cwd) S.project = baseName(e.cwd);
+  }
   switch (e.kind) {
     case "session_start":
-      if (S.approval) decide("ask", false, true);
       S.project = baseName(e.cwd); S.started = Date.now(); S.finishedAt = null;
       S.steps = []; S.status = "idle"; S.view = "activity"; S.error = null;
       reveal("compact"); if (S.mode === "expanded") S.mode = "compact";
@@ -113,34 +124,22 @@ function applyHook(e: AgentEvent) {
       if (s) s.status = e.kind === "tool_end" ? "done" : "failed";
       break;
     }
-    case "permission": {
-      if (!e.needsDecision || !e.request) return;
-      if (S.approval) decide("ask", false, true);
-      const total = e.request.timeoutMs || 108000;
-      S.approval = {
-        id: e.request.id, agent: e.agent, tool: e.tool ?? "a tool", target: e.target ?? "", detail: e.detail ?? e.target ?? "",
-        canRemember: e.request.canRemember, deadline: Date.now() + total, total,
-      };
-      S.status = "approval"; S.view = "approval"; S.mode = "expanded";
-      armApproval();
+    case "permission":
+      if (S.approval) queueCard(e); else { const c = card(e); if (c) showCard(c); }
       break;
-    }
     case "notice":
-      pushStep({ tool: "Note", target: e.target ?? "", status: "done" });
+      pushStep({ tool: e.tool ?? "Note", target: e.target ?? "", status: "done" });
       break;
     case "turn_done":
-      if (S.approval) decide("ask", false, true);
       S.steps.forEach(s => { if (s.status === "running") s.status = "done"; });
       S.status = "finished"; S.finishedAt = Date.now(); S.view = "finished"; S.mode = "expanded";
       later(() => { if (S.status === "finished" && S.mode === "expanded" && S.view === "finished") { S.mode = "compact"; render(); } }, 10000);
       break;
     case "turn_failed":
-      if (S.approval) decide("ask", false, true);
       S.steps.forEach(s => { if (s.status === "running") s.status = "failed"; });
       S.status = "error"; S.error = e.detail || "Request failed"; S.view = "error"; S.mode = "expanded";
       break;
     case "session_end":
-      if (S.approval) decide("ask", false, true);
       S.status = "idle"; S.mode = "hidden";
       break;
     default:
@@ -149,15 +148,83 @@ function applyHook(e: AgentEvent) {
   render();
 }
 
-/* ---------- Answering a permission request ---------- */
-function decide(choice: Choice, timedOut = false, silent = false) {
+/** Steps from a session other than the one whose card is on screen. */
+function otherSession(e: AgentEvent) {
+  const where = e.cwd ? `${baseName(e.cwd)}: ` : "";
+  if (e.kind === "prompt") pushStep({ tool: "Prompt", target: where + (e.target ?? ""), status: "done" });
+  if (e.kind === "tool_start") pushStep({ tool: e.tool ?? "Tool", target: where + (e.target ?? ""), status: "running", key: e.key });
+  if (e.kind === "notice") pushStep({ tool: e.tool ?? "Note", target: where + (e.target ?? ""), status: "done" });
+  if (e.kind === "tool_end" || e.kind === "tool_failed") {
+    const s = S.steps.find(x => x.key && x.key === e.key);
+    if (s) s.status = e.kind === "tool_end" ? "done" : "failed";
+  }
+  if (where && (e.kind === "turn_done" || e.kind === "turn_failed" || e.kind === "session_end")) {
+    S.steps.forEach(s => { if (s.status === "running" && s.target.startsWith(where)) s.status = e.kind === "turn_failed" ? "failed" : "done"; });
+  }
+}
+
+/* ---------- Permission cards ---------- */
+function card(e: AgentEvent): Approval | null {
+  if (!e.needsDecision || !e.request) return null;
+  const total = e.request.timeoutMs || 108000;
+  return {
+    id: e.request.id, session: e.session, project: baseName(e.cwd) || S.project, agent: e.agent,
+    tool: e.tool ?? "a tool", target: e.target ?? "", detail: e.detail ?? e.target ?? "",
+    canRemember: e.request.canRemember, deadline: Date.now() + total, total,
+  };
+}
+
+function showCard(a: Approval) {
+  S.approval = a; S.session = a.session; S.project = a.project;
+  S.status = "approval"; S.view = "approval"; S.mode = "expanded";
+  armApproval();
+}
+
+/** A second request waits its turn instead of pushing the first one back to its terminal. */
+function queueCard(e: AgentEvent) {
+  const c = card(e);
+  if (c) S.queue.push(c);
+}
+
+/** Shows the next waiting card that still has time left. Returns false when there is none. */
+function nextCard() {
+  S.approval = null;
+  S.queue = S.queue.filter(a => a.deadline > Date.now() + 1000);
+  const next = S.queue.shift();
+  if (next) { showCard(next); return true; }
+  S.status = "working"; S.view = "activity";
+  return false;
+}
+
+/** Hands a request back to the agent's own prompt: the relay prints nothing. */
+const release = (a: Approval) => { if (a.id) invoke("decide", { id: a.id, choice: "ask" }).catch(() => {}); };
+
+/**
+ * Claude Code shows its own prompt while a hook waits, so a request can be
+ * answered in the terminal first. Its session moving on settles the card: the
+ * same tool finishing or failing, or the turn or session ending.
+ */
+function settledElsewhere(e: AgentEvent) {
+  const ends = e.kind === "prompt" || e.kind === "turn_done" || e.kind === "turn_failed" || e.kind === "session_end" || e.kind === "session_start";
+  const settles = (a: Approval) => a.session === e.session && (ends ||
+    ((e.kind === "tool_end" || e.kind === "tool_failed") && e.tool === a.tool && (e.target ?? "") === a.target));
+  S.queue = S.queue.filter(a => { if (!settles(a)) return true; release(a); return false; });
+  if (S.approval && settles(S.approval)) {
+    release(S.approval);
+    pushStep({ tool: "Answered", target: "in the terminal", status: "done" });
+    nextCard();
+  }
+}
+
+function decide(choice: Choice, timedOut = false) {
   const a = S.approval; if (!a) return;
   // "ask" hands the question back to the terminal: Rust closes the pipe with nothing written.
   if (a.id) invoke("decide", { id: a.id, choice }).catch(() => {});
   if (choice === "deny") pushStep({ tool: "Denied", target: a.target, status: "failed" });
   if (timedOut) pushStep({ tool: "Asked", target: "in the terminal", status: "done" });
-  S.approval = null; S.status = "working"; S.view = "activity"; S.lastActive = Date.now();
-  if (!silent) { S.mode = "compact"; render(); }
+  S.lastActive = Date.now();
+  if (!nextCard()) S.mode = "compact";
+  render();
 }
 
 /* ---------- Rendering ---------- */
@@ -199,6 +266,9 @@ function render() {
     $("#ap-cmd").textContent = a.detail;
     $("#b-always").hidden = !a.canRemember;
     $("#ap-note").hidden = !a.canRemember;
+    const more = S.queue.length;
+    $("#ap-more").textContent = more ? `${more} more ${more === 1 ? "request" : "requests"} waiting after this one` : "";
+    $("#ap-more").hidden = !more;
   }
   if (S.view === "finished") {
     const done = S.steps.filter(s => s.status === "done");
@@ -322,6 +392,9 @@ for (const [b, choice] of [[answerButtons[0], "allow"], [answerButtons[1], "deny
 listen<AgentEvent>("hook", e => applyHook(e.payload));
 // The relay went away or the 108 s ran out: Claude Code asks in the terminal.
 listen<string>("permission-gone", e => {
+  const queued = S.queue.length;
+  S.queue = S.queue.filter(a => a.id !== e.payload);
+  if (S.queue.length !== queued) { render(); return; }
   if (S.approval?.id !== e.payload) return;
   S.approval.id = "";
   decide("ask", true);
