@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "hook": "cargo build --release -p drip-hook",
-    "icons": "rustc -O --edition 2021 scripts/gen_icon.rs -o target/gen_icon.exe && targetgen_icon.exe src-tauri/icons/source.png && tauri icon src-tauri/icons/source.png -o src-tauri/icons"
+    "icons": "rustc -O --edition 2021 scripts/gen_icon.rs -o target/gen_icon.exe && target\\gen_icon.exe src-tauri/icons/source.png && tauri icon src-tauri/icons/source.png -o src-tauri/icons"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
