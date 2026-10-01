@@ -1,4 +1,4 @@
-// The island. Ported from drip.html: all behaviour runs through applyHook(),
+// The island. Ported from docs/prototype.html: all behaviour runs through applyHook(),
 // which receives agent-neutral events from the Rust side. Claude Code's own
 // payload shape stops at the backend adapter (src-tauri/src/agents/).
 
