@@ -122,6 +122,7 @@ function applyHook(e: AgentEvent) {
         canRemember: e.request.canRemember, deadline: Date.now() + total, total,
       };
       S.status = "approval"; S.view = "approval"; S.mode = "expanded";
+      armApproval();
       break;
     }
     case "notice":
@@ -284,9 +285,39 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   S.mode = S.mode === "expanded" ? "compact" : "hidden"; render();
 });
-$("#b-allow").addEventListener("click", () => decide("allow"));
-$("#b-deny").addEventListener("click", () => decide("deny"));
-$("#b-always").addEventListener("click", () => decide("always"));
+/* ---------- Approval buttons ----------
+   An answer only counts when it is unmistakably meant for the card on screen:
+   focus is cleared when a card appears, presses in its first 400 ms are
+   ignored, and a click counts only if the press started on that same button
+   while this card was showing. Nothing left over from the previous card (a
+   focused button, a late or repeated click) can answer the new one. */
+const ARM_MS = 400;
+const answerButtons = ["#b-allow", "#b-deny", "#b-always"].map(s => $<HTMLButtonElement>(s));
+let armedAt = Infinity, armTimer = 0;
+let pressed: { el: EventTarget | null; card: string } = { el: null, card: "" };
+
+function armApproval() {
+  (document.activeElement as HTMLElement | null)?.blur();
+  pressed = { el: null, card: "" };
+  armedAt = Date.now() + ARM_MS;
+  answerButtons.forEach(b => (b.disabled = true));
+  clearTimeout(armTimer);
+  armTimer = window.setTimeout(() => answerButtons.forEach(b => (b.disabled = false)), ARM_MS);
+}
+
+function answer(choice: Choice, ev: MouseEvent) {
+  const a = S.approval;
+  const ok = a && ev.isTrusted && Date.now() >= armedAt && pressed.el === ev.currentTarget && pressed.card === a.id;
+  pressed = { el: null, card: "" };
+  if (ok) decide(choice);
+}
+
+for (const [b, choice] of [[answerButtons[0], "allow"], [answerButtons[1], "deny"], [answerButtons[2], "always"]] as const) {
+  b.addEventListener("pointerdown", ev => {
+    pressed = Date.now() >= armedAt && S.approval ? { el: ev.currentTarget, card: S.approval.id } : { el: null, card: "" };
+  });
+  b.addEventListener("click", ev => answer(choice, ev));
+}
 
 listen<AgentEvent>("hook", e => applyHook(e.payload));
 // The relay went away or the 108 s ran out: Claude Code asks in the terminal.

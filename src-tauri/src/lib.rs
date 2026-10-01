@@ -26,6 +26,7 @@ static SHOWN: AtomicBool = AtomicBool::new(false);
 /// The island's answer to a permission request.
 #[tauri::command]
 fn decide(app: AppHandle, id: String, choice: String) {
+    eprintln!("[drip] decision id={id} choice={choice}");
     pipe::decide(&app, &id, &choice);
 }
 

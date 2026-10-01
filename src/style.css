@@ -85,6 +85,7 @@ canvas.drop{width:40px;height:46px;flex:none}
 .ibtn.go:hover{filter:brightness(1.08)}
 .ibtn.no{color:var(--bad)}
 .ibtn.quiet{font-weight:500;color:var(--isl-muted)}
+.ibtn:disabled{opacity:.55;cursor:default;transform:none}
 .stats{display:flex;flex-wrap:wrap;gap:6px}
 .stats span{font-size:.76rem;padding:4px 10px;border-radius:99px;background:var(--isl-raise);color:var(--isl-muted)}
 .stats b{color:var(--isl-fg);font-weight:600;font-variant-numeric:tabular-nums}
